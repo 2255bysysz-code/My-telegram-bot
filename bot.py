@@ -25,7 +25,7 @@ def is_allowed(user_id):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update.effective_user.id): return
-    await update.message.reply_text(f"Привет! Я работаю на {OPENAI_MODEL}. Отправь текст или фото.")
+    await update.message.reply_text(f"Привет! Я работаю на {OPENAI_MODEL}. Отправь текст, фото или команду /qr (например, /qr https://google.com).")
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update.effective_user.id): return
@@ -41,17 +41,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update.effective_user.id): return
-    # Получаем фото самого высокого качества
     photo_file = await update.message.photo[-1].get_file()
     photo_bytes = await photo_file.download_as_bytearray()
-    
-    # Кодируем в Base64 (как требует DeepSeek)
     b64_image = base64.b64encode(photo_bytes).decode('utf-8')
     caption = update.message.caption or "Что на этой картинке? Опиши подробно."
     
     try:
         response = await client.chat.completions.create(
-            model=OPENAI_MODEL, # deepseek-flash
+            model=OPENAI_MODEL,
             messages=[{
                 "role": "user",
                 "content": [
@@ -64,11 +61,36 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Ошибка при обработке фото: {e}")
 
+async def handle_qr(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update.effective_user.id): return
+    text = update.message.text
+    qr_text = text.replace('/qr', '').strip()
+    
+    if not qr_text:
+        await update.message.reply_text("Пожалуйста, напиши текст после команды, например: /qr https://google.com")
+        return
+
+    try:
+        qr = qrcode.QRCode(version=1, box_size=10, border=5)
+        qr.add_data(qr_text)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        bio = BytesIO()
+        bio.name = 'qr.png'
+        img.save(bio, 'PNG')
+        bio.seek(0)
+        
+        await update.message.reply_photo(photo=bio, caption=f"QR-код для: {qr_text}")
+    except Exception as e:
+        await update.message.reply_text(f"Ошибка при создании QR-кода: {e}")
+
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(CommandHandler("qr", handle_qr))
     app.run_polling()
 
 if __name__ == "__main__":
