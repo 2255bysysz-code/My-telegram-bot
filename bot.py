@@ -1,6 +1,7 @@
 import os
 import logging
 import base64
+import qrcode
 from io import BytesIO
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
